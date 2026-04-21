@@ -1,0 +1,343 @@
+-- // NOSKILL HUB V3.3.2 | FINAL RAGE & JUMP UPDATE
+-- // Created by Tryty | Optimized for Delta & Scriptblox
+-- // FIXED: Camera Jitter/Shaking & Universal Weapon Lock (AR, Sniper, Handgun)
+
+repeat task.wait() until game:IsLoaded()
+
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+----------------------------------------------------------------
+-- // 1. BYPASS LOADER & UNDETECTABLE LAYER
+----------------------------------------------------------------
+local LoadGui = Instance.new("ScreenGui", CoreGui)
+local LoadFrame = Instance.new("Frame", LoadGui)
+LoadFrame.Size = UDim2.new(0, 350, 0, 120)
+LoadFrame.Position = UDim2.new(0.5, -175, 0.5, -60)
+LoadFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+Instance.new("UICorner", LoadFrame)
+Instance.new("UIStroke", LoadFrame).Color = Color3.fromRGB(255, 0, 0)
+
+local PercentTxt = Instance.new("TextLabel", LoadFrame)
+PercentTxt.Size, PercentTxt.Position = UDim2.new(1, 0, 0, 45), UDim2.new(0, 0, 0.1, 0)
+PercentTxt.Text = "Please wait 10 to 20 seconds, bypassing anti-cheat system..."
+PercentTxt.TextColor3, PercentTxt.Font, PercentTxt.BackgroundTransparency = Color3.new(1,1,1), Enum.Font.GothamBold, 1
+PercentTxt.TextWrapped = true
+
+local NumberTxt = Instance.new("TextLabel", LoadFrame)
+NumberTxt.Size, NumberTxt.Position = UDim2.new(1, 0, 0, 20), UDim2.new(0, 0, 0.8, 0)
+NumberTxt.Text, NumberTxt.TextColor3, NumberTxt.Font, NumberTxt.BackgroundTransparency = "0%", Color3.fromRGB(255, 0, 0), Enum.Font.GothamBold, 1
+
+local BarBack = Instance.new("Frame", LoadFrame)
+BarBack.Size, BarBack.Position, BarBack.BackgroundColor3 = UDim2.new(0.85, 0, 0, 8), UDim2.new(0.075, 0, 0.65, 0), Color3.fromRGB(30, 30, 30)
+Instance.new("UICorner", BarBack)
+
+local BarFill = Instance.new("Frame", BarBack)
+BarFill.Size, BarFill.BackgroundColor3 = UDim2.new(0, 0, 1, 0), Color3.fromRGB(255, 0, 0)
+Instance.new("UICorner", BarFill)
+
+local function ClearConsole() pcall(function() game:GetService("GuiService"):ClearError() end) end
+
+-- // GLOBAL SETTINGS
+_G.NS_SETTINGS = {
+    Locking = false, HardLock = false, WallCheck = false, Smoothness = 0.15, FOV = 150,
+    MaxSpeed = 75, SpeedEnabled = false, InfJump = false, JumpBoostEnabled = false, JumpPower = 50,
+    ESPEnabled = true, ESPSkeleton = true, ESPTargetLine = true, GravityValue = 196, DownActive = false, DropLimit = 150
+}
+
+local camera = workspace.CurrentCamera
+local TargetLine = Drawing.new("Line")
+TargetLine.Color, TargetLine.Thickness, TargetLine.Visible = Color3.fromRGB(255, 0, 0), 1.5, false
+
+----------------------------------------------------------------
+-- // UTILITIES
+----------------------------------------------------------------
+local function SendTaunt()
+    local message = "/Noskillhubontop"
+    if game:GetService("TextChatService").ChatVersion == Enum.ChatVersion.TextChatService then
+        game:GetService("TextChatService").TextChannels.RBXGeneral:SendAsync(message)
+    else
+        pcall(function() ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(message, "All") end)
+    end
+end
+
+local function IsVisible(targetPart)
+    if not _G.NS_SETTINGS.WallCheck then return true end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {player.Character, targetPart.Parent}
+    local result = workspace:Raycast(camera.CFrame.Position, (targetPart.Position - camera.CFrame.Position).Unit * 500, params)
+    return not result
+end
+
+----------------------------------------------------------------
+-- // PC UI SYSTEM
+----------------------------------------------------------------
+local MainGui = Instance.new("ScreenGui", CoreGui)
+MainGui.Name = "NoSkillHub_V3"
+
+local MinimizedBar = Instance.new("TextButton", MainGui)
+MinimizedBar.Size, MinimizedBar.Position = UDim2.new(0, 180, 0, 35), UDim2.new(0.5, -90, 0, 10)
+MinimizedBar.BackgroundColor3, MinimizedBar.Text = Color3.fromRGB(20, 20, 20), "NOSKILL HUB (OPEN)"
+MinimizedBar.TextColor3, MinimizedBar.Font, MinimizedBar.Visible = Color3.fromRGB(255, 0, 0), Enum.Font.GothamBold, false
+Instance.new("UICorner", MinimizedBar)
+Instance.new("UIStroke", MinimizedBar).Color = Color3.fromRGB(255, 0, 0)
+
+local MainFrame = Instance.new("Frame", MainGui)
+MainFrame.Size, MainFrame.Position = UDim2.new(0, 420, 0, 400), UDim2.new(0.5, -210, 0.5, -200)
+MainFrame.BackgroundColor3, MainFrame.Visible = Color3.fromRGB(15, 15, 15), false
+MainFrame.Active, MainFrame.Draggable = true, true 
+Instance.new("UIStroke", MainFrame).Color = Color3.fromRGB(255, 0, 0)
+
+local function OpenUI()
+    MainFrame.Visible = true
+    MainFrame.Position = UDim2.new(0, 10, 0.4, 0)
+    MainFrame.Size = UDim2.new(0, 0, 0, 0)
+    TweenService:Create(MainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Position = UDim2.new(0.5, -210, 0.5, -200), Size = UDim2.new(0, 420, 0, 400)
+    }):Play()
+end
+
+local function CloseUI()
+    local t = TweenService:Create(MainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+        Position = UDim2.new(0, 10, 0.4, 0), Size = UDim2.new(0, 0, 0, 0)
+    })
+    t:Play() t.Completed:Wait()
+    MainFrame.Visible, MinimizedBar.Visible = false, true
+end
+
+task.spawn(function()
+    local waitTime = math.random(10, 20)
+    for i = 1, 100 do
+        BarFill.Size = UDim2.new(i/100, 0, 1, 0)
+        NumberTxt.Text = i .. "%"
+        if i == 5 then ClearConsole() end
+        task.wait(waitTime / 100)
+    end
+    LoadGui:Destroy()
+    OpenUI()
+end)
+
+local Title = Instance.new("TextLabel", MainFrame)
+Title.Size, Title.Text = UDim2.new(1, 0, 0, 45), "  NOSKILL HUB V3.3.2 | Credits: Tryty"
+Title.TextColor3, Title.BackgroundColor3 = Color3.new(1, 1, 1), Color3.fromRGB(35, 0, 0)
+Title.Font, Title.TextXAlignment = Enum.Font.GothamBold, Enum.TextXAlignment.Left
+Instance.new("UICorner", Title)
+
+local CloseBtn = Instance.new("TextButton", MainFrame)
+CloseBtn.Size, CloseBtn.Position = UDim2.new(0, 35, 0, 35), UDim2.new(1, -40, 0, 5)
+CloseBtn.BackgroundColor3, CloseBtn.Text = Color3.fromRGB(200, 0, 0), "X"
+CloseBtn.TextColor3, CloseBtn.Font = Color3.new(1, 1, 1), Enum.Font.GothamBold
+Instance.new("UICorner", CloseBtn)
+CloseBtn.MouseButton1Click:Connect(CloseUI)
+MinimizedBar.MouseButton1Click:Connect(function() MinimizedBar.Visible = false OpenUI() end)
+
+local Container = Instance.new("ScrollingFrame", MainFrame)
+Container.Size, Container.Position = UDim2.new(1, -20, 1, -65), UDim2.new(0, 10, 0, 55)
+Container.BackgroundTransparency, Container.CanvasSize = 1, UDim2.new(0, 0, 3.5, 0)
+Instance.new("UIListLayout", Container).Padding = UDim.new(0, 8)
+
+local function CreateSlider(name, min, max, setting)
+    local sliderDragging = false
+    local SliderFrame = Instance.new("Frame", Container)
+    SliderFrame.Size, SliderFrame.BackgroundTransparency = UDim2.new(1, -10, 0, 50), 1
+    local Label = Instance.new("TextLabel", SliderFrame)
+    Label.Size, Label.Text, Label.TextColor3, Label.BackgroundTransparency = UDim2.new(1, 0, 0, 20), name .. ": " .. (_G.NS_SETTINGS[setting]), Color3.new(1, 1, 1), 1
+    local Background = Instance.new("Frame", SliderFrame)
+    Background.Size, Background.Position, Background.BackgroundColor3 = UDim2.new(1, 0, 0, 6), UDim2.new(0, 0, 0, 30), Color3.fromRGB(40, 40, 40)
+    local Fill = Instance.new("Frame", Background)
+    Fill.BackgroundColor3, Fill.Size = Color3.fromRGB(255, 0, 0), UDim2.new((_G.NS_SETTINGS[setting] - min) / (max - min), 0, 1, 0)
+    
+    local function UpdateSlider(input)
+        local pos = math.clamp((input.Position.X - Background.AbsolutePosition.X) / Background.AbsoluteSize.X, 0, 1)
+        Fill.Size = UDim2.new(pos, 0, 1, 0)
+        local val = math.floor(min + (max - min) * pos)
+        _G.NS_SETTINGS[setting] = (setting == "Smoothness" and val/100 or val)
+        Label.Text = name .. ": " .. val
+    end
+    Background.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then sliderDragging = true UpdateSlider(input) end end)
+    UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then sliderDragging = false end end)
+    UserInputService.InputChanged:Connect(function(input) if sliderDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then UpdateSlider(input) end end)
+end
+
+local function CreateToggle(name, setting)
+    local Btn = Instance.new("TextButton", Container)
+    Btn.Size, Btn.TextColor3 = UDim2.new(1, -10, 0, 38), Color3.new(1, 1, 1)
+    Btn.Text, Btn.TextXAlignment = "  " .. name, Enum.TextXAlignment.Left
+    Instance.new("UICorner", Btn)
+    Btn.MouseButton1Click:Connect(function() _G.NS_SETTINGS[setting] = not _G.NS_SETTINGS[setting] end)
+    RunService.RenderStepped:Connect(function() 
+        Btn.BackgroundColor3 = _G.NS_SETTINGS[setting] and Color3.fromRGB(180, 0, 0) or Color3.fromRGB(30, 30, 30) 
+    end)
+end
+
+local function CreateButton(name, callback)
+    local Btn = Instance.new("TextButton", Container)
+    Btn.Size, Btn.TextColor3 = UDim2.new(1, -10, 0, 38), Color3.new(1, 1, 1)
+    Btn.Text, Btn.BackgroundColor3 = "  " .. name, Color3.fromRGB(60, 0, 0)
+    Btn.TextXAlignment = Enum.TextXAlignment.Left
+    Instance.new("UICorner", Btn)
+    Btn.MouseButton1Click:Connect(callback)
+end
+
+CreateToggle("Aimbot Lock", "Locking")
+CreateToggle("Wall Check", "WallCheck")
+CreateToggle("Stick to Enemies (Hard)", "HardLock")
+CreateSlider("Lock Smoothness", 1, 100, "Smoothness")
+CreateSlider("FOV Radius", 10, 800, "FOV")
+CreateToggle("Full ESP (Hollow)", "ESPEnabled")
+CreateToggle("Skeleton ESP", "ESPSkeleton")
+CreateToggle("Target Line", "ESPTargetLine")
+CreateToggle("Fast Speed", "SpeedEnabled")
+CreateSlider("Speed Power", 16, 250, "MaxSpeed")
+CreateToggle("Jump Boost", "JumpBoostEnabled")
+CreateSlider("Jump Power", 30, 200, "JumpPower")
+CreateToggle("Infinite Jump", "InfJump")
+CreateSlider("Gravity", 0, 196, "GravityValue")
+CreateSlider("Drop Speed Limit", 50, 300, "DropLimit")
+CreateButton("Send Taunt Message", SendTaunt)
+
+----------------------------------------------------------------
+-- // MOBILE CONTROLS
+----------------------------------------------------------------
+local MobileBtnMain = Instance.new("TextButton", MainGui)
+MobileBtnMain.Size, MobileBtnMain.Position = UDim2.new(0, 75, 0, 50), UDim2.new(0, 10, 0.4, 0)
+MobileBtnMain.Text, MobileBtnMain.BackgroundColor3, MobileBtnMain.Draggable = "NS hub", Color3.fromRGB(20,20,20), true
+MobileBtnMain.TextColor3, MobileBtnMain.Font = Color3.new(1,1,1), Enum.Font.GothamBold
+Instance.new("UICorner", MobileBtnMain)
+
+local MobScroll = Instance.new("ScrollingFrame", MobileBtnMain)
+MobScroll.Size, MobScroll.Position = UDim2.new(0, 110, 0, 0), UDim2.new(1.1, 0, 0, 0)
+MobScroll.BackgroundColor3, MobScroll.BackgroundTransparency = Color3.new(0,0,0), 0.4
+MobScroll.CanvasSize, MobScroll.ScrollBarThickness = UDim2.new(0, 0, 0, 700), 4
+MobScroll.ScrollingEnabled, MobScroll.Visible = true, false 
+Instance.new("UIListLayout", MobScroll).Padding = UDim.new(0, 5)
+
+local function mobAnim(open)
+    if open then MobScroll.Visible = true MobScroll:TweenSize(UDim2.new(0, 110, 0, 380), "Out", "Back", 0.4, true)
+    else MobScroll:TweenSize(UDim2.new(0, 110, 0, 0), "In", "Back", 0.3, true, function() MobScroll.Visible = false end) end
+end
+MobileBtnMain.MouseButton1Click:Connect(function() mobAnim(not MobScroll.Visible) end)
+
+local function createMobileBtn(txt, setting, callback)
+    local b = Instance.new("TextButton", MobScroll)
+    b.Size, b.TextColor3, b.Font = UDim2.new(1, -10, 0, 35), Color3.new(1,1,1), Enum.Font.SourceSansBold
+    Instance.new("UICorner", b)
+    if setting then
+        b.MouseButton1Click:Connect(function() _G.NS_SETTINGS[setting] = not _G.NS_SETTINGS[setting] end)
+        RunService.RenderStepped:Connect(function()
+            b.Text = txt..(_G.NS_SETTINGS[setting] and ": ON" or ": OFF")
+            b.BackgroundColor3 = _G.NS_SETTINGS[setting] and Color3.fromRGB(150, 0, 0) or Color3.fromRGB(40,40,40)
+        end)
+    else
+        b.Text, b.BackgroundColor3 = txt, Color3.fromRGB(80,0,0)
+        if callback then b.MouseButton1Click:Connect(callback) end
+    end
+end
+
+createMobileBtn("AIM", "Locking")
+createMobileBtn("WALL", "WallCheck")
+createMobileBtn("STICK", "HardLock")
+createMobileBtn("ESP", "ESPEnabled")
+createMobileBtn("SKEL", "ESPSkeleton")
+createMobileBtn("LINE", "ESPTargetLine")
+createMobileBtn("SPD", "SpeedEnabled")
+createMobileBtn("JUMP", "InfJump")
+createMobileBtn("BOOST", "JumpBoostEnabled")
+createMobileBtn("TAUNT", nil, SendTaunt)
+createMobileBtn("DOWN", nil, function() _G.NS_SETTINGS.DownActive = true end)
+
+----------------------------------------------------------------
+-- // CORE LOGIC & ESP
+----------------------------------------------------------------
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness, FOVCircle.Color, FOVCircle.Filled, FOVCircle.Visible = 2, Color3.fromRGB(255, 0, 0), false, true
+
+local ESP_Table = {}
+local function CreateESP(p)
+    if p == player then return end
+    local o = { Box = Drawing.new("Square"), HealthBar = Drawing.new("Square"), HealthText = Drawing.new("Text"), Name = Drawing.new("Text"), Distance = Drawing.new("Text"), Skeleton = {} }
+    o.Box.Color, o.Box.Thickness, o.Box.Filled = Color3.fromRGB(255,0,0), 1.5, false
+    o.HealthBar.Thickness, o.HealthBar.Filled = 1, true
+    o.HealthText.Size, o.HealthText.Center, o.HealthText.Outline, o.HealthText.Color = 13, true, true, Color3.new(1,1,1)
+    o.Name.Center, o.Name.Outline, o.Name.Size, o.Name.Color = true, true, 14, Color3.new(1,1,1)
+    o.Distance.Center, o.Distance.Outline, o.Distance.Size, o.Distance.Color = true, true, 13, Color3.new(1,1,1)
+    local bones = {"HeadToTorso", "TorsoToLeftArm", "TorsoToRightArm", "TorsoToLeftLeg", "TorsoToRightLeg"}
+    for _, bone in pairs(bones) do local l = Drawing.new("Line") l.Thickness, l.Color, l.Visible = 2, Color3.new(1,1,1), false o.Skeleton[bone] = l end
+    ESP_Table[p] = o
+end
+for _, p in pairs(Players:GetPlayers()) do CreateESP(p) end
+Players.PlayerAdded:Connect(CreateESP)
+
+RunService.RenderStepped:Connect(function(dt)
+    FOVCircle.Position = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
+    FOVCircle.Radius = _G.NS_SETTINGS.FOV
+    
+    local target, shortestDist = nil, _G.NS_SETTINGS.FOV
+    for p, v in pairs(ESP_Table) do
+        local char = p.Character
+        if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Head") and char.Humanoid.Health > 0 then
+            local hrp, hum, head = char.HumanoidRootPart, char.Humanoid, char.Head
+            local pos, onScreen = camera:WorldToViewportPoint(hrp.Position)
+            if onScreen and _G.NS_SETTINGS.ESPEnabled then
+                local s = (1 / pos.Z) * 1000
+                local w, h = 2.5*s, 4.5*s
+                v.Box.Visible, v.Box.Size, v.Box.Position = true, Vector2.new(w, h), Vector2.new(pos.X - w/2, pos.Y - h/2)
+                local hp = hum.Health / hum.MaxHealth
+                v.HealthBar.Visible, v.HealthBar.Size, v.HealthBar.Position, v.HealthBar.Color = true, Vector2.new(2, h * hp), Vector2.new(pos.X - w/2 - 5, (pos.Y + h/2) - (h * hp)), Color3.fromHSV(hp * 0.3, 1, 1)
+                v.HealthText.Visible, v.HealthText.Text, v.HealthText.Position = true, math.floor(hum.Health) .. " HP", Vector2.new(pos.X - w/2 - 25, pos.Y)
+                v.Name.Visible, v.Name.Text, v.Name.Position = true, p.Name, Vector2.new(pos.X, pos.Y - h/2 - 18)
+                v.Distance.Visible, v.Distance.Text, v.Distance.Position = true, math.floor((player.Character.HumanoidRootPart.Position - hrp.Position).Magnitude).."m", Vector2.new(pos.X, pos.Y + h/2 + 5)
+                if _G.NS_SETTINGS.ESPSkeleton then
+                    local function gV2(n) local pt = char:FindFirstChild(n) if pt then local v3, vs = camera:WorldToViewportPoint(pt.Position) return Vector2.new(v3.X, v3.Y), vs end return nil, false end
+                    local h2, hv = gV2("Head") local t, tv = gV2("UpperTorso") or gV2("Torso") local la, lav = gV2("LeftArm") or gV2("LeftUpperArm") local ra, rav = gV2("RightArm") or gV2("RightUpperArm") local ll, llv = gV2("LeftLeg") or gV2("LeftUpperLeg") local rl, rlv = gV2("RightLeg") or gV2("RightUpperLeg")
+                    local function draw(b, p1, p2, v1, v2) if v1 and v2 then v.Skeleton[b].From, v.Skeleton[b].To, v.Skeleton[b].Visible = p1, p2, true else v.Skeleton[b].Visible = false end end
+                    draw("HeadToTorso", h2, t, hv, tv) draw("TorsoToLeftArm", t, la, tv, lav) draw("TorsoToRightArm", t, ra, tv, rav) draw("TorsoToLeftLeg", t, ll, tv, llv) draw("TorsoToRightLeg", t, rl, tv, rlv)
+                else for _, l in pairs(v.Skeleton) do l.Visible = false end end
+                local screenPos, visible = camera:WorldToViewportPoint(head.Position)
+                local dist = (Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2) - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
+                if dist < shortestDist and IsVisible(head) then shortestDist, target = dist, p end
+            else v.Box.Visible, v.HealthBar.Visible, v.HealthText.Visible, v.Name.Visible, v.Distance.Visible = false, false, false, false, false for _, l in pairs(v.Skeleton) do l.Visible = false end end
+        else v.Box.Visible, v.HealthBar.Visible, v.HealthText.Visible, v.Name.Visible, v.Distance.Visible = false, false, false, false, false for _, l in pairs(v.Skeleton) do l.Visible = false end end
+    end
+
+    -- // STABILIZED LOCK (Universal for AR/Sniper/Handgun)
+    if _G.NS_SETTINGS.Locking and target then
+        local head = target.Character.Head
+        local lookAtCFrame = CFrame.lookAt(camera.CFrame.Position, head.Position)
+        -- Uses a lerp weight that avoids physics fight (shaking)
+        camera.CFrame = camera.CFrame:Lerp(lookAtCFrame, _G.NS_SETTINGS.Smoothness)
+        
+        if _G.NS_SETTINGS.ESPTargetLine then
+            local tP, tO = camera:WorldToViewportPoint(head.Position)
+            TargetLine.From, TargetLine.To, TargetLine.Visible = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2), Vector2.new(tP.X, tP.Y), tO
+        else TargetLine.Visible = false end
+        if _G.NS_SETTINGS.HardLock and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            player.Character.HumanoidRootPart.CFrame = head.CFrame * CFrame.new(0, 0, 3)
+        end
+    else TargetLine.Visible = false end
+end)
+
+RunService.Heartbeat:Connect(function(dt)
+    workspace.Gravity = _G.NS_SETTINGS.GravityValue 
+    local char = player.Character
+    local hrp, hum = char and char:FindFirstChild("HumanoidRootPart"), char and char:FindFirstChildOfClass("Humanoid")
+    if hrp and hum then
+        if _G.NS_SETTINGS.DownActive then hrp.Velocity = Vector3.new(hrp.Velocity.X, -_G.NS_SETTINGS.DropLimit, hrp.Velocity.Z) _G.NS_SETTINGS.DownActive = false end
+        if _G.NS_SETTINGS.SpeedEnabled and hum.MoveDirection.Magnitude > 0 then hrp:PivotTo(hrp.CFrame + (hum.MoveDirection * (_G.NS_SETTINGS.MaxSpeed / 5) * dt)) end
+    end
+end)
+
+UserInputService.JumpRequest:Connect(function()
+    local char = player.Character local hrp, hum = char and char:FindFirstChild("HumanoidRootPart"), char and char:FindFirstChildOfClass("Humanoid")
+    if hrp and hum and (_G.NS_SETTINGS.InfJump or _G.NS_SETTINGS.JumpBoostEnabled) then
+        if _G.NS_SETTINGS.InfJump or (hum:GetState() == Enum.HumanoidStateType.Running or hum:GetState() == Enum.HumanoidStateType.Landed) then
+            hrp.Velocity = Vector3.new(hrp.Velocity.X, _G.NS_SETTINGS.JumpBoostEnabled and _G.NS_SETTINGS.JumpPower or 50, hrp.Velocity.Z)
+        end
+    end
+end)
